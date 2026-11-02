@@ -1,0 +1,27 @@
+# the folder which SETUP.cmd creates to setup the python virtual environment and stuff
+.setup-payload/
+
+# the saved workbench output, which generats everytime a solution is ran
+practice/
+
+# python files
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+build/
+dist/
+
+# logs
+
+*.log
+
+# IDE or Editor Files
+.idea/
+.vscode/
+*.iml
+
+# OS Junk Files
+Thumbs.db
+desktop.ini
+.DS_Store
