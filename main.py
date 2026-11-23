@@ -16,8 +16,12 @@ def main():
         print(exc.message, file=sys.stderr)
         return 2
     except (OSError, ImportError):
+<<<<<<< HEAD
         setup_cmd = "SETUP.cmd" if sys.platform == "win32" else "./SETUP.sh"
         print(f"Adventure could not open its workbench files. Run {setup_cmd}, or extract a fresh copy of the supplied project.", file=sys.stderr)
+=======
+        print("Adventure could not open its workbench files. Run SETUP.cmd, or extract a fresh copy of the supplied project.", file=sys.stderr)
+>>>>>>> origin/blanila-finale
         return 2
 
 

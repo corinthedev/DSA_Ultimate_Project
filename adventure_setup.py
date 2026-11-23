@@ -19,6 +19,7 @@ PILLOW_VERSION = "12.3.0"
 OWNER = {"format": "ultra-project-setup-owned", "version": 1}
 ENV_OWNER = {"format": "ultra-project-environment-owned", "version": 1}
 HANDOFF = "ULTRA_MANAGED_INTERPRETER_HANDOFF"
+<<<<<<< HEAD
 RECOVERABLE_SETUP_ERRORS = frozenset({
     "SETUP_REQUIRED",
     "PROJECT_MOVED",
@@ -35,6 +36,8 @@ RECOVERABLE_SETUP_ERRORS = frozenset({
     "RUNTIME_IDENTITY",
     "ENVIRONMENT_COMMAND_FAILED",
 })
+=======
+>>>>>>> origin/blanila-finale
 EXPECTED = {
     "runtime": ("cpython-3.12.14+20260814-x86_64-pc-windows-msvc-install_only.tar.gz", 46097715,
         "7330282b47cd43a66b702d39078d2e5a88e580cee351d82f95045f21f5ee042a",
@@ -44,12 +47,18 @@ EXPECTED = {
         "https://files.pythonhosted.org/packages/45/89/da2f7971a317f83d807fdd4065c0af40208e59e692cc43d315a71a0e96d1/pillow-12.3.0-cp312-cp312-win_amd64.whl"),
 }
 PROBE = r"""import json,sys,platform,struct,ctypes,importlib.util
+<<<<<<< HEAD
 r=dict(version=platform.python_version(),version_info=list(sys.version_info[:3]),implementation=platform.python_implementation(),bits=struct.calcsize('P')*8,platform=sys.platform,executable=sys.executable,base_prefix=sys.base_prefix,elevated=bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False)
 try:
  import tkinter
  r['tk_import']=tkinter.TkVersion
 except Exception:
  r['tk_import']=None
+=======
+r=dict(version=platform.python_version(),implementation=platform.python_implementation(),bits=struct.calcsize('P')*8,platform=sys.platform,executable=sys.executable,base_prefix=sys.base_prefix,elevated=bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False)
+import tkinter
+r['tk_import']=tkinter.TkVersion
+>>>>>>> origin/blanila-finale
 r['pillow']=None
 if importlib.util.find_spec('PIL') is not None:
  import PIL
@@ -74,12 +83,15 @@ class SetupError(RuntimeError):
         self.code, self.message = code, message
         super().__init__(message)
 
+<<<<<<< HEAD
 def is_windows():
     return os.name == "nt"
 
 def setup_command_name():
     return "SETUP.cmd" if is_windows() else "./SETUP.sh"
 
+=======
+>>>>>>> origin/blanila-finale
 def elevated():
     return sys.platform == "win32" and bool(ctypes.windll.shell32.IsUserAnAdmin())
 
@@ -134,6 +146,7 @@ def owned_folder(root, name):
     path = checked_path(root, Path(root) / name)
     marker = path / "owner.json"
     if path.exists():
+<<<<<<< HEAD
         if not is_windows():
             if not path.is_dir():
                 path.unlink()
@@ -151,6 +164,10 @@ def owned_folder(root, name):
         else:
             if not path.is_dir() or not marker.is_file() or read_json(marker) != OWNER:
                 raise SetupError("UNOWNED_SETUP_FOLDER", "Setup found an existing folder it does not own. Ask your instructor to check the project before retrying.")
+=======
+        if not path.is_dir() or not marker.is_file() or read_json(marker) != OWNER:
+            raise SetupError("UNOWNED_SETUP_FOLDER", "Setup found an existing folder it does not own. Ask your instructor to check the project before retrying.")
+>>>>>>> origin/blanila-finale
     else:
         path.mkdir()
         atomic_json(root, marker, OWNER)
@@ -282,12 +299,21 @@ def run_trusted(arguments, *, cwd, timeout=180):
             job = _SetupJob(process)
         stdout, stderr = process.communicate(timeout=timeout)
         if process.returncode != 0 or len(stdout) + len(stderr) > 262144:
+<<<<<<< HEAD
             raise SetupError("ENVIRONMENT_COMMAND_FAILED", f"An environment step could not finish. Run {setup_command_name()} again; your student files and saved runs are unchanged.")
         return stdout
     except subprocess.TimeoutExpired:
         raise SetupError("SETUP_TIMEOUT", f"An environment check took too long. Its setup processes have been stopped; retry {setup_command_name()}.") from None
     except OSError:
         raise SetupError("RUNTIME_UNAVAILABLE", f"The project interpreter could not start. Retry {setup_command_name()}.") from None
+=======
+            raise SetupError("ENVIRONMENT_COMMAND_FAILED", "An environment step could not finish. Run SETUP.cmd again; your student files and saved runs are unchanged.")
+        return stdout
+    except subprocess.TimeoutExpired:
+        raise SetupError("SETUP_TIMEOUT", "An environment check took too long. Its setup processes have been stopped; retry SETUP.cmd.") from None
+    except OSError:
+        raise SetupError("RUNTIME_UNAVAILABLE", "The project interpreter could not start. Retry SETUP.cmd. If Windows blocks execution, ask your institution's IT team to approve it; keep its security policy in place.") from None
+>>>>>>> origin/blanila-finale
     finally:
         if job is not None:
             job.close()
@@ -305,6 +331,7 @@ def run_trusted(arguments, *, cwd, timeout=180):
             if process.stderr:
                 process.stderr.close()
 
+<<<<<<< HEAD
 def _has_tkinter(executable):
     try:
         proc = subprocess.run(
@@ -383,6 +410,8 @@ def find_posix_python(preferred=None, *, root=None, progress=None):
         "No Python 3 interpreter with tkinter was found. Install python3-tk/tk or uv, then run ./SETUP.sh.",
     )
 
+=======
+>>>>>>> origin/blanila-finale
 def inspect_python(executable, root, *, require_pillow=False):
     try:
         observed = json.loads(run_trusted([executable, "-I", "-B", "-c", PROBE], cwd=root, timeout=20))
@@ -390,6 +419,7 @@ def inspect_python(executable, root, *, require_pillow=False):
         raise SetupError("RUNTIME_IDENTITY", "The selected interpreter did not return a valid environment identity.") from None
     if not isinstance(observed, dict):
         raise SetupError("RUNTIME_IDENTITY", "The selected interpreter returned malformed environment information.")
+<<<<<<< HEAD
     if is_windows():
         if (observed.get("version") != PYTHON_VERSION or observed.get("implementation") != "CPython"
                 or observed.get("bits") != 64 or observed.get("platform") != "win32" or observed.get("tk_import") != 8.6):
@@ -404,6 +434,13 @@ def inspect_python(executable, root, *, require_pillow=False):
             raise SetupError("TK_MISSING", "Adventure needs Python with Tk (tkinter). Run ./SETUP.sh to prepare the environment.")
         if require_pillow and not observed.get("pillow"):
             raise SetupError("GUI_DEPENDENCY", "Adventure needs Pillow in its project environment. Run ./SETUP.sh to repair it.")
+=======
+    if (observed.get("version") != PYTHON_VERSION or observed.get("implementation") != "CPython"
+            or observed.get("bits") != 64 or observed.get("platform") != "win32" or observed.get("tk_import") != 8.6):
+        raise SetupError("WRONG_RUNTIME", "Adventure needs CPython 3.12.14 for Windows x64 with Tk. Run SETUP.cmd to prepare the supported environment.")
+    if require_pillow and observed.get("pillow") != PILLOW_VERSION:
+        raise SetupError("GUI_DEPENDENCY", "Adventure needs Pillow 12.3.0 in its project environment. Run SETUP.cmd to repair it.")
+>>>>>>> origin/blanila-finale
     return observed
 
 def artifact_matches(path, spec):
@@ -457,6 +494,7 @@ def acquire_artifact(root, spec, *, offline=False, artifact_dir=None, opener=Non
             partial.unlink()
 
 def managed_python(root):
+<<<<<<< HEAD
     if is_windows():
         return checked_path(root, Path(root) / ".venv" / "Scripts" / "python.exe")
     root = Path(root).resolve()
@@ -467,6 +505,9 @@ def managed_python(root):
 
 def managed_interpreter_relpath():
     return ".venv/Scripts/python.exe" if is_windows() else ".venv/bin/python"
+=======
+    return checked_path(root, Path(root) / ".venv" / "Scripts" / "python.exe")
+>>>>>>> origin/blanila-finale
 
 def payload_name(name):
     """Canonical Windows-safe relative payload name; no shell interpretation."""
@@ -549,6 +590,7 @@ def validate_payload(root, lock=None, lock_hash=None):
 
 def ensure_environment(root, source_python, *, inspect=inspect_python, runner=run_trusted):
     root = Path(root).resolve()
+<<<<<<< HEAD
     if not is_windows():
         environment = root / ".venv"
         marker = environment / ".ultra-environment-owner.json"
@@ -574,6 +616,8 @@ def ensure_environment(root, source_python, *, inspect=inspect_python, runner=ru
             atomic_json(root, marker, {"owner": ENV_OWNER, "project_root": str(root)})
         return managed_python(root)
 
+=======
+>>>>>>> origin/blanila-finale
     environment = checked_path(root, root / ".venv")
     marker = checked_path(root, environment / ".ultra-environment-owner.json")
     recreate = not environment.exists()
@@ -652,6 +696,7 @@ def direct_bundled_launchers(root, executable, manifest_hash, *, verify_only=Fal
     return result
 
 
+<<<<<<< HEAD
 def _install_pillow_posix(root, executable, *, runner=run_trusted, progress=None):
     if progress:
         progress("Installing Pillow into Adventure's local environment")
@@ -676,6 +721,8 @@ def _install_pillow_posix(root, executable, *, runner=run_trusted, progress=None
     raise SetupError("GUI_DEPENDENCY", "Could not install Pillow into Adventure's local environment. Check your internet connection and retry ./SETUP.sh.")
 
 
+=======
+>>>>>>> origin/blanila-finale
 def prepare_environment(root, *, source_python=None, offline=False, artifact_dir=None, prepare_only=False,
                         inspect=inspect_python, runner=run_trusted, gui_probe=None, bundled=False, progress=None):
     root = checked_path(Path(root).absolute(), Path(root).absolute(), allow_root=True).resolve()
@@ -685,6 +732,7 @@ def prepare_environment(root, *, source_python=None, offline=False, artifact_dir
         ready = checked_path(root, setup / "environment-ready.json")
         if ready.exists():
             ready.unlink()
+<<<<<<< HEAD
         if not is_windows():
             if progress:
                 progress("Checking Python and Tk runtime")
@@ -724,6 +772,8 @@ def prepare_environment(root, *, source_python=None, offline=False, artifact_dir
             atomic_json(root, setup / "environment-prepared.json", result)
             return result
 
+=======
+>>>>>>> origin/blanila-finale
         if progress:
             progress("Checking supplied Adventure files")
         lock, lock_hash = load_lock(root)
@@ -772,6 +822,7 @@ def prepare_environment(root, *, source_python=None, offline=False, artifact_dir
 
 def check_ready(root, *, inspect=inspect_python):
     root = checked_path(Path(root).absolute(), Path(root).absolute(), allow_root=True).resolve()
+<<<<<<< HEAD
     setup = checked_path(root, root / ".setup")
     if not setup.is_dir() or not (setup / "owner.json").is_file() or read_json(setup / "owner.json") != OWNER:
         raise SetupError("SETUP_REQUIRED", f"Run {setup_command_name()} once, then open main.py or {'START.cmd' if is_windows() else './START.sh'}.")
@@ -795,6 +846,20 @@ def check_ready(root, *, inspect=inspect_python):
         return executable
 
     lock, lock_hash = load_lock(root)
+=======
+    lock, lock_hash = load_lock(root)
+    setup = checked_path(root, root / ".setup")
+    if not setup.is_dir() or not (setup / "owner.json").is_file() or read_json(setup / "owner.json") != OWNER:
+        raise SetupError("SETUP_REQUIRED", "Run SETUP.cmd once, then open main.py or START.cmd.")
+    marker = setup / "environment-ready.json"
+    if not marker.is_file():
+        raise SetupError("SETUP_REQUIRED", "Setup has not completed its graphical check. Run SETUP.cmd, then reopen Adventure.")
+    data = read_json(marker)
+    if not isinstance(data, dict):
+        raise SetupError("SETUP_REQUIRED", "The environment record is damaged. Run SETUP.cmd to repair it.")
+    if data.get("project_root") != str(root):
+        raise SetupError("PROJECT_MOVED", "This project has moved. Run SETUP.cmd here to repair its environment; your code and saved runs will stay in place.")
+>>>>>>> origin/blanila-finale
     if (data.get("format") != "ultra-project-environment" or data.get("version") != 1
             or data.get("ready") is not True or data.get("status") != "READY" or data.get("lock_sha256") != lock_hash
             or data.get("interpreter") != ".venv/Scripts/python.exe"):
@@ -812,6 +877,7 @@ def check_ready(root, *, inspect=inspect_python):
 
 def launch(root, *, application=None, inspect=inspect_python, current_executable=None, handoff_runner=None):
     root = Path(root).resolve()
+<<<<<<< HEAD
     try:
         executable = check_ready(root, inspect=inspect)
     except SetupError as exc:
@@ -828,6 +894,13 @@ def launch(root, *, application=None, inspect=inspect_python, current_executable
     if not same_interpreter:
         if HANDOFF in os.environ:
             raise SetupError("INTERPRETER_HANDOFF", f"Adventure could not switch to its project interpreter. Run {setup_command_name()}, then choose .venv in your IDE once.")
+=======
+    executable = check_ready(root, inspect=inspect)
+    current = Path(current_executable or sys.executable).resolve()
+    if os.path.normcase(str(current)) != os.path.normcase(str(executable.resolve())):
+        if HANDOFF in os.environ:
+            raise SetupError("INTERPRETER_HANDOFF", "Adventure could not switch to its project interpreter. Run SETUP.cmd, then choose .venv in your IDE once.")
+>>>>>>> origin/blanila-finale
         runner = handoff_runner or subprocess.run
         result = runner([str(executable), "-X", "utf8", "-B", str(root / "main.py")], cwd=root,
             env={**os.environ, HANDOFF: "1", "PYTHONDONTWRITEBYTECODE": "1"}, shell=False)

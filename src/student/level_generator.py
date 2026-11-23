@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Generate a canonical level using the injected terrain generator."""
 import random
 from collections import deque
@@ -14,11 +15,16 @@ from src.api import (
     TerrainGeneratorContract,
     TerrainTopology,
 )
+=======
+"""TODO: build a canonical level using the injected terrain generator."""
+from src.api import LevelDefinition, LevelSpecification, TerrainGeneratorContract
+>>>>>>> origin/blanila-finale
 
 
 class LevelGenerator:
     """Use the supplied TerrainGeneratorContract; do not instantiate a replacement."""
 
+<<<<<<< HEAD
     _DIRECTIONS: tuple[tuple[int, int], ...] = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
     def __init__(self, terrain_generator: TerrainGeneratorContract) -> None:
@@ -471,3 +477,11 @@ class LevelGenerator:
             )
             for idx, pos in enumerate(positions)
         )
+=======
+    def __init__(self, terrain_generator: TerrainGeneratorContract) -> None:
+        raise NotImplementedError("TODO LevelGenerator: retain injected generator and implement generate_level")
+
+    def generate_level(self, specification: LevelSpecification, seed: int) -> LevelDefinition:
+        # Preserve specification identities and seed; choose valid opposite endpoints.
+        raise NotImplementedError("TODO LevelGenerator.generate_level")
+>>>>>>> origin/blanila-finale

@@ -1,13 +1,19 @@
+<<<<<<< HEAD
 """Generate canonical terrain deterministically from specification and seed."""
 import random
 from itertools import product
 
 from src.api import GenerationFailure, Terrain, TerrainGenerationSpec, TerrainTopology
+=======
+"""TODO: generate canonical terrain deterministically from specification and seed."""
+from src.api import Terrain, TerrainGenerationSpec
+>>>>>>> origin/blanila-finale
 
 
 class TerrainGenerator:
     """Keep state local; identical inputs must also agree across fresh instances."""
 
+<<<<<<< HEAD
     _DIRECTIONS: tuple[tuple[int, int], ...] = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
     def __init__(self) -> None:
@@ -374,3 +380,11 @@ class TerrainGenerator:
             for r in range(rows)
         )
         return Terrain(terrain_rows)
+=======
+    def __init__(self) -> None:
+        raise NotImplementedError("TODO TerrainGenerator: implement constructor and generate_terrain")
+
+    def generate_terrain(self, specification: TerrainGenerationSpec, seed: int) -> Terrain:
+        # This workbench accepts only its documented public introductory family.
+        raise NotImplementedError("TODO TerrainGenerator.generate_terrain")
+>>>>>>> origin/blanila-finale
