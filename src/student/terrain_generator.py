@@ -1,19 +1,18 @@
-<<<<<<< HEAD
 """Generate canonical terrain deterministically from specification and seed."""
 import random
 from itertools import product
 
 from src.api import GenerationFailure, Terrain, TerrainGenerationSpec, TerrainTopology
-=======
+
 """TODO: generate canonical terrain deterministically from specification and seed."""
 from src.api import Terrain, TerrainGenerationSpec
->>>>>>> origin/blanila-finale
+
 
 
 class TerrainGenerator:
     """Keep state local; identical inputs must also agree across fresh instances."""
 
-<<<<<<< HEAD
+
     _DIRECTIONS: tuple[tuple[int, int], ...] = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
     def __init__(self) -> None:
