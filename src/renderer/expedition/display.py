@@ -1,4 +1,6 @@
 """GUI-only Windows awareness and measured display data; never change OS settings."""
+import os
+from pathlib import Path
 import platform
 import sys
 
@@ -91,8 +93,26 @@ class WindowsDisplay:
         return result
 
 
+def _configure_project_fonts():
+    if sys.platform != "linux":
+        return
+    root_dir = Path(__file__).resolve().parents[3]
+    fonts_conf = root_dir / ".setup" / "fonts" / "fonts.conf"
+    if not os.environ.get("FONTCONFIG_FILE") and fonts_conf.is_file():
+        os.environ["FONTCONFIG_FILE"] = str(fonts_conf)
+    tk_xft = root_dir / ".setup" / "tk-xft" / "libtcl9tk9.0.so"
+    if tk_xft.is_file() and "_tkinter" not in sys.modules:
+        import ctypes
+        try:
+            ctypes.CDLL(str(tk_xft), mode=ctypes.RTLD_GLOBAL)
+        except OSError:
+            pass
+
+
 def initialize_display(*, api=None, platform_name=None):
     """Call before importing/creating Tk. Respect an existing launcher decision."""
+    if platform_name is None:
+        _configure_project_fonts()
     result = dict(policy="gui-startup-v1", before=None, after=None, attempts=[], outcome="not-windows",
                   windows_settings_changed=False, tk_scaling_forced=False)
     if (platform_name or sys.platform) != "win32": return result

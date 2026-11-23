@@ -1,5 +1,11 @@
-# the folder which SETUP.cmd creates to setup the python virtual environment and stuff
+# the folder which SETUP.cmd / SETUP.sh creates to setup the python virtual environment and stuff
 .setup-payload/
+.setup/
+.venv/
+venv/
+
+# local tool manager config
+mise.toml
 
 # the saved workbench output, which generats everytime a solution is ran
 practice/
@@ -13,7 +19,6 @@ build/
 dist/
 
 # logs
-
 *.log
 
 # IDE or Editor Files

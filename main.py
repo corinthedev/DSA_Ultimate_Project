@@ -16,7 +16,8 @@ def main():
         print(exc.message, file=sys.stderr)
         return 2
     except (OSError, ImportError):
-        print("Adventure could not open its workbench files. Run SETUP.cmd, or extract a fresh copy of the supplied project.", file=sys.stderr)
+        setup_cmd = "SETUP.cmd" if sys.platform == "win32" else "./SETUP.sh"
+        print(f"Adventure could not open its workbench files. Run {setup_cmd}, or extract a fresh copy of the supplied project.", file=sys.stderr)
         return 2
 
 

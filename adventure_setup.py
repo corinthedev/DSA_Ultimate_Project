@@ -19,6 +19,22 @@ PILLOW_VERSION = "12.3.0"
 OWNER = {"format": "ultra-project-setup-owned", "version": 1}
 ENV_OWNER = {"format": "ultra-project-environment-owned", "version": 1}
 HANDOFF = "ULTRA_MANAGED_INTERPRETER_HANDOFF"
+RECOVERABLE_SETUP_ERRORS = frozenset({
+    "SETUP_REQUIRED",
+    "PROJECT_MOVED",
+    "METADATA_INVALID",
+    "METADATA_LIMIT",
+    "UNOWNED_SETUP_FOLDER",
+    "UNOWNED_ENVIRONMENT",
+    "GUI_DEPENDENCY",
+    "WRONG_RUNTIME",
+    "TK_MISSING",
+    "PAYLOAD_INTEGRITY",
+    "UNVERIFIED_ARTIFACT",
+    "RUNTIME_UNAVAILABLE",
+    "RUNTIME_IDENTITY",
+    "ENVIRONMENT_COMMAND_FAILED",
+})
 EXPECTED = {
     "runtime": ("cpython-3.12.14+20260814-x86_64-pc-windows-msvc-install_only.tar.gz", 46097715,
         "7330282b47cd43a66b702d39078d2e5a88e580cee351d82f95045f21f5ee042a",
@@ -28,9 +44,12 @@ EXPECTED = {
         "https://files.pythonhosted.org/packages/45/89/da2f7971a317f83d807fdd4065c0af40208e59e692cc43d315a71a0e96d1/pillow-12.3.0-cp312-cp312-win_amd64.whl"),
 }
 PROBE = r"""import json,sys,platform,struct,ctypes,importlib.util
-r=dict(version=platform.python_version(),implementation=platform.python_implementation(),bits=struct.calcsize('P')*8,platform=sys.platform,executable=sys.executable,base_prefix=sys.base_prefix,elevated=bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False)
-import tkinter
-r['tk_import']=tkinter.TkVersion
+r=dict(version=platform.python_version(),version_info=list(sys.version_info[:3]),implementation=platform.python_implementation(),bits=struct.calcsize('P')*8,platform=sys.platform,executable=sys.executable,base_prefix=sys.base_prefix,elevated=bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False)
+try:
+ import tkinter
+ r['tk_import']=tkinter.TkVersion
+except Exception:
+ r['tk_import']=None
 r['pillow']=None
 if importlib.util.find_spec('PIL') is not None:
  import PIL
@@ -54,6 +73,12 @@ class SetupError(RuntimeError):
     def __init__(self, code, message):
         self.code, self.message = code, message
         super().__init__(message)
+
+def is_windows():
+    return os.name == "nt"
+
+def setup_command_name():
+    return "SETUP.cmd" if is_windows() else "./SETUP.sh"
 
 def elevated():
     return sys.platform == "win32" and bool(ctypes.windll.shell32.IsUserAnAdmin())
@@ -109,8 +134,23 @@ def owned_folder(root, name):
     path = checked_path(root, Path(root) / name)
     marker = path / "owner.json"
     if path.exists():
-        if not path.is_dir() or not marker.is_file() or read_json(marker) != OWNER:
-            raise SetupError("UNOWNED_SETUP_FOLDER", "Setup found an existing folder it does not own. Ask your instructor to check the project before retrying.")
+        if not is_windows():
+            if not path.is_dir():
+                path.unlink()
+                path.mkdir()
+                atomic_json(root, marker, OWNER)
+            else:
+                valid = False
+                if marker.is_file():
+                    try:
+                        valid = read_json(marker) == OWNER
+                    except (SetupError, OSError):
+                        valid = False
+                if not valid:
+                    atomic_json(root, marker, OWNER)
+        else:
+            if not path.is_dir() or not marker.is_file() or read_json(marker) != OWNER:
+                raise SetupError("UNOWNED_SETUP_FOLDER", "Setup found an existing folder it does not own. Ask your instructor to check the project before retrying.")
     else:
         path.mkdir()
         atomic_json(root, marker, OWNER)
@@ -242,12 +282,12 @@ def run_trusted(arguments, *, cwd, timeout=180):
             job = _SetupJob(process)
         stdout, stderr = process.communicate(timeout=timeout)
         if process.returncode != 0 or len(stdout) + len(stderr) > 262144:
-            raise SetupError("ENVIRONMENT_COMMAND_FAILED", "An environment step could not finish. Run SETUP.cmd again; your student files and saved runs are unchanged.")
+            raise SetupError("ENVIRONMENT_COMMAND_FAILED", f"An environment step could not finish. Run {setup_command_name()} again; your student files and saved runs are unchanged.")
         return stdout
     except subprocess.TimeoutExpired:
-        raise SetupError("SETUP_TIMEOUT", "An environment check took too long. Its setup processes have been stopped; retry SETUP.cmd.") from None
+        raise SetupError("SETUP_TIMEOUT", f"An environment check took too long. Its setup processes have been stopped; retry {setup_command_name()}.") from None
     except OSError:
-        raise SetupError("RUNTIME_UNAVAILABLE", "The project interpreter could not start. Retry SETUP.cmd. If Windows blocks execution, ask your institution's IT team to approve it; keep its security policy in place.") from None
+        raise SetupError("RUNTIME_UNAVAILABLE", f"The project interpreter could not start. Retry {setup_command_name()}.") from None
     finally:
         if job is not None:
             job.close()
@@ -265,6 +305,84 @@ def run_trusted(arguments, *, cwd, timeout=180):
             if process.stderr:
                 process.stderr.close()
 
+def _has_tkinter(executable):
+    try:
+        proc = subprocess.run(
+            [str(executable), "-I", "-B", "-c", "import tkinter"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+def _uv_find_python(spec="3.12"):
+    uv_bin = shutil.which("uv")
+    if not uv_bin:
+        return None
+    for flags in (["--no-project", "--managed-python"], ["--no-project"]):
+        try:
+            proc = subprocess.run(
+                [uv_bin, "python", "find", *flags, spec],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15,
+            )
+            if proc.returncode == 0:
+                candidate = proc.stdout.strip().splitlines()[-1].strip()
+                if candidate and Path(candidate).exists():
+                    return Path(candidate)
+        except (OSError, subprocess.SubprocessError, IndexError):
+            pass
+    return None
+
+def _is_inside_venv(candidate, root):
+    if root is None:
+        return False
+    venv_dir = os.path.abspath(str(Path(root).resolve() / ".venv"))
+    cand_abs = os.path.abspath(str(candidate))
+    return cand_abs == venv_dir or cand_abs.startswith(venv_dir + os.sep)
+
+def find_posix_python(preferred=None, *, root=None, progress=None):
+    candidates = []
+    seen = set()
+    def add(item):
+        if not item:
+            return
+        text = str(item)
+        if _is_inside_venv(text, root):
+            return
+        if text not in seen:
+            seen.add(text)
+            candidates.append(Path(text))
+
+    add(preferred)
+    add(_uv_find_python("3.12"))
+    if _is_inside_venv(sys.executable, root):
+        add(Path(sys.executable).resolve())
+    else:
+        add(sys.executable)
+    for name in ("python3.12", "python3.13", "python3.11", "python3", "python"):
+        add(shutil.which(name))
+
+    for candidate in candidates:
+        if candidate.exists() and _has_tkinter(candidate):
+            return candidate
+
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        if progress:
+            progress("Installing Python 3.12 with Tk via uv")
+        try:
+            subprocess.run([uv_bin, "python", "install", "3.12"], check=True, timeout=180)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        found = _uv_find_python("3.12")
+        if found and not _is_inside_venv(found, root) and _has_tkinter(found):
+            return found
+
+    raise SetupError(
+        "TK_MISSING",
+        "No Python 3 interpreter with tkinter was found. Install python3-tk/tk or uv, then run ./SETUP.sh.",
+    )
+
 def inspect_python(executable, root, *, require_pillow=False):
     try:
         observed = json.loads(run_trusted([executable, "-I", "-B", "-c", PROBE], cwd=root, timeout=20))
@@ -272,11 +390,20 @@ def inspect_python(executable, root, *, require_pillow=False):
         raise SetupError("RUNTIME_IDENTITY", "The selected interpreter did not return a valid environment identity.") from None
     if not isinstance(observed, dict):
         raise SetupError("RUNTIME_IDENTITY", "The selected interpreter returned malformed environment information.")
-    if (observed.get("version") != PYTHON_VERSION or observed.get("implementation") != "CPython"
-            or observed.get("bits") != 64 or observed.get("platform") != "win32" or observed.get("tk_import") != 8.6):
-        raise SetupError("WRONG_RUNTIME", "Adventure needs CPython 3.12.14 for Windows x64 with Tk. Run SETUP.cmd to prepare the supported environment.")
-    if require_pillow and observed.get("pillow") != PILLOW_VERSION:
-        raise SetupError("GUI_DEPENDENCY", "Adventure needs Pillow 12.3.0 in its project environment. Run SETUP.cmd to repair it.")
+    if is_windows():
+        if (observed.get("version") != PYTHON_VERSION or observed.get("implementation") != "CPython"
+                or observed.get("bits") != 64 or observed.get("platform") != "win32" or observed.get("tk_import") != 8.6):
+            raise SetupError("WRONG_RUNTIME", "Adventure needs CPython 3.12.14 for Windows x64 with Tk. Run SETUP.cmd to prepare the supported environment.")
+        if require_pillow and observed.get("pillow") != PILLOW_VERSION:
+            raise SetupError("GUI_DEPENDENCY", "Adventure needs Pillow 12.3.0 in its project environment. Run SETUP.cmd to repair it.")
+    else:
+        version_info = observed.get("version_info") or [0, 0, 0]
+        if not isinstance(version_info, list) or len(version_info) < 2 or (version_info[0], version_info[1]) < (3, 10):
+            raise SetupError("WRONG_RUNTIME", "Adventure needs Python 3.10+ with Tk. Run ./SETUP.sh to prepare the environment.")
+        if observed.get("tk_import") is None:
+            raise SetupError("TK_MISSING", "Adventure needs Python with Tk (tkinter). Run ./SETUP.sh to prepare the environment.")
+        if require_pillow and not observed.get("pillow"):
+            raise SetupError("GUI_DEPENDENCY", "Adventure needs Pillow in its project environment. Run ./SETUP.sh to repair it.")
     return observed
 
 def artifact_matches(path, spec):
@@ -330,7 +457,16 @@ def acquire_artifact(root, spec, *, offline=False, artifact_dir=None, opener=Non
             partial.unlink()
 
 def managed_python(root):
-    return checked_path(root, Path(root) / ".venv" / "Scripts" / "python.exe")
+    if is_windows():
+        return checked_path(root, Path(root) / ".venv" / "Scripts" / "python.exe")
+    root = Path(root).resolve()
+    venv_dir = root / ".venv"
+    if venv_dir.is_symlink():
+        raise SetupError("LINKED_PROJECT", "Setup found a linked environment folder. Use an ordinary project folder.")
+    return venv_dir / "bin" / "python"
+
+def managed_interpreter_relpath():
+    return ".venv/Scripts/python.exe" if is_windows() else ".venv/bin/python"
 
 def payload_name(name):
     """Canonical Windows-safe relative payload name; no shell interpretation."""
@@ -413,6 +549,31 @@ def validate_payload(root, lock=None, lock_hash=None):
 
 def ensure_environment(root, source_python, *, inspect=inspect_python, runner=run_trusted):
     root = Path(root).resolve()
+    if not is_windows():
+        environment = root / ".venv"
+        marker = environment / ".ultra-environment-owner.json"
+        recreate = not environment.exists() or environment.is_symlink() or not environment.is_dir()
+        if not recreate:
+            try:
+                prior = read_json(marker) if marker.is_file() else None
+            except (SetupError, OSError):
+                prior = None
+            if not isinstance(prior, dict) or prior.get("owner") != ENV_OWNER or prior.get("project_root") != str(root):
+                recreate = True
+            else:
+                try:
+                    inspect(managed_python(root), root)
+                except SetupError:
+                    recreate = True
+        if recreate:
+            if environment.is_symlink() or environment.is_file():
+                environment.unlink()
+            elif environment.exists():
+                shutil.rmtree(environment)
+            runner([source_python, "-I", "-B", "-m", "venv", str(environment)], cwd=root)
+            atomic_json(root, marker, {"owner": ENV_OWNER, "project_root": str(root)})
+        return managed_python(root)
+
     environment = checked_path(root, root / ".venv")
     marker = checked_path(root, environment / ".ultra-environment-owner.json")
     recreate = not environment.exists()
@@ -491,6 +652,30 @@ def direct_bundled_launchers(root, executable, manifest_hash, *, verify_only=Fal
     return result
 
 
+def _install_pillow_posix(root, executable, *, runner=run_trusted, progress=None):
+    if progress:
+        progress("Installing Pillow into Adventure's local environment")
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        for spec in (f"Pillow=={PILLOW_VERSION}", "Pillow"):
+            try:
+                runner([uv_bin, "pip", "install", "--python", str(executable), spec], cwd=root)
+                return
+            except SetupError:
+                continue
+    try:
+        runner([executable, "-I", "-B", "-m", "pip", "--version"], cwd=root, timeout=30)
+    except SetupError:
+        runner([executable, "-I", "-B", "-m", "ensurepip", "--upgrade"], cwd=root, timeout=120)
+    for spec in (f"Pillow=={PILLOW_VERSION}", "Pillow"):
+        try:
+            runner([executable, "-I", "-B", "-m", "pip", "--isolated", "--disable-pip-version-check", "install", spec], cwd=root)
+            return
+        except SetupError:
+            continue
+    raise SetupError("GUI_DEPENDENCY", "Could not install Pillow into Adventure's local environment. Check your internet connection and retry ./SETUP.sh.")
+
+
 def prepare_environment(root, *, source_python=None, offline=False, artifact_dir=None, prepare_only=False,
                         inspect=inspect_python, runner=run_trusted, gui_probe=None, bundled=False, progress=None):
     root = checked_path(Path(root).absolute(), Path(root).absolute(), allow_root=True).resolve()
@@ -500,6 +685,45 @@ def prepare_environment(root, *, source_python=None, offline=False, artifact_dir
         ready = checked_path(root, setup / "environment-ready.json")
         if ready.exists():
             ready.unlink()
+        if not is_windows():
+            if progress:
+                progress("Checking Python and Tk runtime")
+            source_python = find_posix_python(source_python, root=root, progress=progress)
+            inspect(source_python, root)
+            if progress:
+                progress("Preparing Adventure's local Python environment")
+            executable = ensure_environment(root, source_python, inspect=inspect, runner=runner)
+            observed = inspect(executable, root)
+            if not observed.get("pillow"):
+                _install_pillow_posix(root, executable, runner=runner, progress=progress)
+            observed = inspect(executable, root, require_pillow=True)
+            result = {
+                "format": "ultra-project-environment",
+                "version": 1,
+                "project_root": str(root),
+                "platform": sys.platform,
+                "interpreter": managed_interpreter_relpath(),
+                "python": observed,
+                "base_interpreter": str(source_python),
+                "ready": False,
+                "student_code_executed": False,
+            }
+            if prepare_only:
+                result["status"] = "PREPARED_NEEDS_WINDOW_CHECK"
+            else:
+                if progress:
+                    progress("Checking the workbench window")
+                if gui_probe is None:
+                    result["window_check"] = json.loads(runner([executable, "-I", "-B", "-c", TK_PROBE], cwd=root, timeout=20))
+                else:
+                    result["window_check"] = gui_probe(executable, root)
+                if result["window_check"].get("window_created") is not True:
+                    raise SetupError("TK_WINDOW_FAILED", "The graphical window check did not complete. Check your display session and retry ./SETUP.sh.")
+                result.update(status="READY", ready=True)
+                atomic_json(root, ready, result)
+            atomic_json(root, setup / "environment-prepared.json", result)
+            return result
+
         if progress:
             progress("Checking supplied Adventure files")
         lock, lock_hash = load_lock(root)
@@ -548,18 +772,29 @@ def prepare_environment(root, *, source_python=None, offline=False, artifact_dir
 
 def check_ready(root, *, inspect=inspect_python):
     root = checked_path(Path(root).absolute(), Path(root).absolute(), allow_root=True).resolve()
-    lock, lock_hash = load_lock(root)
     setup = checked_path(root, root / ".setup")
     if not setup.is_dir() or not (setup / "owner.json").is_file() or read_json(setup / "owner.json") != OWNER:
-        raise SetupError("SETUP_REQUIRED", "Run SETUP.cmd once, then open main.py or START.cmd.")
+        raise SetupError("SETUP_REQUIRED", f"Run {setup_command_name()} once, then open main.py or {'START.cmd' if is_windows() else './START.sh'}.")
     marker = setup / "environment-ready.json"
     if not marker.is_file():
-        raise SetupError("SETUP_REQUIRED", "Setup has not completed its graphical check. Run SETUP.cmd, then reopen Adventure.")
+        raise SetupError("SETUP_REQUIRED", f"Setup has not completed its graphical check. Run {setup_command_name()}, then reopen Adventure.")
     data = read_json(marker)
     if not isinstance(data, dict):
-        raise SetupError("SETUP_REQUIRED", "The environment record is damaged. Run SETUP.cmd to repair it.")
+        raise SetupError("SETUP_REQUIRED", f"The environment record is damaged. Run {setup_command_name()} to repair it.")
     if data.get("project_root") != str(root):
-        raise SetupError("PROJECT_MOVED", "This project has moved. Run SETUP.cmd here to repair its environment; your code and saved runs will stay in place.")
+        raise SetupError("PROJECT_MOVED", f"This project has moved. Run {setup_command_name()} here to repair its environment; your code and saved runs will stay in place.")
+    if not is_windows():
+        if (data.get("format") != "ultra-project-environment" or data.get("version") != 1
+                or data.get("ready") is not True or data.get("status") != "READY"
+                or data.get("interpreter") != managed_interpreter_relpath()):
+            raise SetupError("SETUP_REQUIRED", "The environment needs a setup check. Run ./SETUP.sh and retry.")
+        executable = managed_python(root)
+        if not executable.exists():
+            raise SetupError("SETUP_REQUIRED", "Adventure's local Python environment is missing. Run ./SETUP.sh to recreate it.")
+        inspect(executable, root, require_pillow=True)
+        return executable
+
+    lock, lock_hash = load_lock(root)
     if (data.get("format") != "ultra-project-environment" or data.get("version") != 1
             or data.get("ready") is not True or data.get("status") != "READY" or data.get("lock_sha256") != lock_hash
             or data.get("interpreter") != ".venv/Scripts/python.exe"):
@@ -577,11 +812,22 @@ def check_ready(root, *, inspect=inspect_python):
 
 def launch(root, *, application=None, inspect=inspect_python, current_executable=None, handoff_runner=None):
     root = Path(root).resolve()
-    executable = check_ready(root, inspect=inspect)
-    current = Path(current_executable or sys.executable).resolve()
-    if os.path.normcase(str(current)) != os.path.normcase(str(executable.resolve())):
+    try:
+        executable = check_ready(root, inspect=inspect)
+    except SetupError as exc:
+        if not is_windows() and exc.code in RECOVERABLE_SETUP_ERRORS:
+            print("Repairing Adventure's local environment...", flush=True)
+            prepare_environment(root, progress=lambda text: print(text, flush=True))
+            executable = check_ready(root, inspect=inspect)
+        else:
+            raise
+    if is_windows():
+        same_interpreter = os.path.normcase(str(Path(current_executable or sys.executable).resolve())) == os.path.normcase(str(executable.resolve()))
+    else:
+        same_interpreter = os.path.abspath(str(current_executable or sys.executable)) == os.path.abspath(str(executable))
+    if not same_interpreter:
         if HANDOFF in os.environ:
-            raise SetupError("INTERPRETER_HANDOFF", "Adventure could not switch to its project interpreter. Run SETUP.cmd, then choose .venv in your IDE once.")
+            raise SetupError("INTERPRETER_HANDOFF", f"Adventure could not switch to its project interpreter. Run {setup_command_name()}, then choose .venv in your IDE once.")
         runner = handoff_runner or subprocess.run
         result = runner([str(executable), "-X", "utf8", "-B", str(root / "main.py")], cwd=root,
             env={**os.environ, HANDOFF: "1", "PYTHONDONTWRITEBYTECODE": "1"}, shell=False)
