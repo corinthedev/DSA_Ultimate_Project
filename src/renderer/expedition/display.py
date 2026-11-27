@@ -1,9 +1,6 @@
 """GUI-only Windows awareness and measured display data; never change OS settings."""
-<<<<<<< HEAD
 import os
 from pathlib import Path
-=======
->>>>>>> origin/blanila-finale
 import platform
 import sys
 
@@ -96,7 +93,6 @@ class WindowsDisplay:
         return result
 
 
-<<<<<<< HEAD
 def _configure_project_fonts():
     if sys.platform != "linux":
         return
@@ -117,10 +113,6 @@ def initialize_display(*, api=None, platform_name=None):
     """Call before importing/creating Tk. Respect an existing launcher decision."""
     if platform_name is None:
         _configure_project_fonts()
-=======
-def initialize_display(*, api=None, platform_name=None):
-    """Call before importing/creating Tk. Respect an existing launcher decision."""
->>>>>>> origin/blanila-finale
     result = dict(policy="gui-startup-v1", before=None, after=None, attempts=[], outcome="not-windows",
                   windows_settings_changed=False, tk_scaling_forced=False)
     if (platform_name or sys.platform) != "win32": return result

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # local setup state and python virtual environment created by SETUP.cmd / SETUP.sh
 .setup/
 .venv/
@@ -6,10 +5,6 @@ venv/
 
 # local tool manager config
 mise.toml
-=======
-# the folder which SETUP.cmd creates to setup the python virtual environment and stuff
-.setup-payload/
->>>>>>> origin/blanila-finale
 
 # the saved workbench output, which generats everytime a solution is ran
 practice/
@@ -19,7 +14,6 @@ __pycache__/
 *.py[cod]
 *.pyd
 *.egg-info/
-<<<<<<< HEAD
 /build/
 /dist/
 
@@ -30,13 +24,6 @@ __pycache__/
 !.setup-payload/**/__pycache__/**
 
 # logs
-=======
-build/
-dist/
-
-# logs
-
->>>>>>> origin/blanila-finale
 *.log
 
 # IDE or Editor Files
@@ -47,8 +34,4 @@ dist/
 # OS Junk Files
 Thumbs.db
 desktop.ini
-<<<<<<< HEAD
 .DS_Store
-=======
-.DS_Store
->>>>>>> origin/blanila-finale
